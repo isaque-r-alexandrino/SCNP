@@ -1,0 +1,888 @@
+import math
+import random
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+from datetime import datetime
+import json
+import sympy
+from typing import List, Tuple, Dict, Optional
+import sys
+from collections import defaultdict
+import heapq
+
+class PrimeSuite:
+    def __init__(self):
+        self.prime_cache = {}  # Cache para resultados de primalidade
+        self.factorization_cache = {}  # Cache para fatorações
+        self.prime_list_cache = {}  # Cache para listas de primos
+        self.performance_stats = defaultdict(list)
+        
+    def is_prime_naive(self, n: int) -> bool:
+        """Teste de primalidade ingênuo otimizado"""
+        if n in self.prime_cache:
+            return self.prime_cache[n]
+            
+        if n < 2:
+            self.prime_cache[n] = False
+            return False
+        if n == 2:
+            self.prime_cache[n] = True
+            return True
+        if n % 2 == 0:
+            self.prime_cache[n] = False
+            return False
+        if n < 9:  # 3, 5, 7 são primos
+            self.prime_cache[n] = True
+            return True
+        
+        # Verificar divisibilidade por primos pequenos primeiro
+        small_primes = [3, 5, 7, 11, 13, 17, 19, 23, 29, 31]
+        for p in small_primes:
+            if n % p == 0:
+                self.prime_cache[n] = (n == p)
+                return n == p
+        
+        # Usar apenas números ímpares até √n
+        limit = int(math.isqrt(n)) + 1
+        for i in range(3, limit, 2):
+            if n % i == 0:
+                self.prime_cache[n] = False
+                return False
+                
+        self.prime_cache[n] = True
+        return True
+    
+    def sieve_of_eratosthenes(self, limit: int) -> List[int]:
+        """Crivo de Eratóstenes altamente otimizado"""
+        if limit in self.prime_list_cache:
+            return self.prime_list_cache[limit]
+            
+        if limit < 2:
+            return []
+        
+        # Usar bytearray para economia de memória
+        is_prime = bytearray(b'\x01') * (limit + 1)
+        is_prime[0] = is_prime[1] = 0
+        
+        # Otimização: processar apenas até √limit
+        sqrt_limit = int(math.isqrt(limit)) + 1
+        
+        # Eliminar números pares (exceto 2)
+        for i in range(4, limit + 1, 2):
+            is_prime[i] = 0
+        
+        # Processar números ímpares
+        for i in range(3, sqrt_limit, 2):
+            if is_prime[i]:
+                # Começar de i*i, com passo 2*i (apenas ímpares)
+                start = i * i
+                step = 2 * i
+                for j in range(start, limit + 1, step):
+                    is_prime[j] = 0
+        
+        # Coletar primos - método mais eficiente
+        primes = [2]
+        primes.extend(i for i in range(3, limit + 1, 2) if is_prime[i])
+        
+        self.prime_list_cache[limit] = primes
+        return primes
+    
+    def sieve_of_atkin(self, limit: int) -> List[int]:
+        """Crivo de Atkin corrigido e otimizado"""
+        if limit in self.prime_list_cache:
+            return self.prime_list_cache[limit]
+            
+        if limit < 2:
+            return []
+        if limit == 2:
+            return [2]
+        if limit == 3:
+            return [2, 3]
+        
+        is_prime = bytearray(b'\x00') * (limit + 1)
+        sqrt_limit = int(math.isqrt(limit)) + 1
+        
+        # PRÉ-PROCESSAMENTO CORRIGIDO
+        for x in range(1, sqrt_limit):
+            x2 = x * x
+            for y in range(1, sqrt_limit):
+                y2 = y * y
+                
+                n = 4 * x2 + y2
+                if n <= limit and (n % 12 == 1 or n % 12 == 5):
+                    is_prime[n] ^= 1
+                
+                n = 3 * x2 + y2
+                if n <= limit and n % 12 == 7:
+                    is_prime[n] ^= 1
+                
+                n = 3 * x2 - y2
+                if x > y and n <= limit and n % 12 == 11:
+                    is_prime[n] ^= 1
+        
+        # ELIMINAR MÚLTIPLOS DE QUADRADOS
+        for i in range(5, sqrt_limit):
+            if is_prime[i]:
+                i2 = i * i
+                for j in range(i2, limit + 1, i2):
+                    is_prime[j] = 0
+        
+        # ADICIONAR PRIMOS CONHECIDOS
+        primes = [2, 3]
+        for i in range(5, limit + 1):
+            if is_prime[i]:
+                primes.append(i)
+        
+        self.prime_list_cache[limit] = primes
+        return primes
+    
+    def sieve_of_sundaram(self, limit: int) -> List[int]:
+        """Crivo de Sundaram como alternativa"""
+        if limit < 2:
+            return []
+        
+        n = (limit - 1) // 2
+        sieve = [True] * (n + 1)
+        
+        for i in range(1, n + 1):
+            j = i
+            while i + j + 2 * i * j <= n:
+                sieve[i + j + 2 * i * j] = False
+                j += 1
+        
+        primes = [2]
+        for i in range(1, n + 1):
+            if sieve[i]:
+                primes.append(2 * i + 1)
+        
+        return primes
+    
+    def miller_rabin_test(self, n: int, k: int = 10) -> bool:
+        """Teste de primalidade Miller-Rabin otimizado"""
+        if n in self.prime_cache:
+            return self.prime_cache[n]
+            
+        if n < 2:
+            return False
+        if n in (2, 3):
+            return True
+        if n % 2 == 0:
+            return False
+        
+        # Testar divisibilidade por primos pequenos primeiro
+        small_primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
+        for p in small_primes:
+            if n == p:
+                self.prime_cache[n] = True
+                return True
+            if n % p == 0:
+                self.prime_cache[n] = False
+                return False
+        
+        # Escrever n-1 como d*2^r
+        r, d = 0, n - 1
+        while d % 2 == 0:
+            r += 1
+            d //= 2
+        
+        def check_composite(a: int) -> bool:
+            x = pow(a, d, n)
+            if x in (1, n - 1):
+                return False
+            for _ in range(r - 1):
+                x = pow(x, 2, n)
+                if x == n - 1:
+                    return False
+            return True
+        
+        # Testar com k bases
+        bases = self._get_miller_rabin_bases(n)
+        for a in bases[:k]:
+            if check_composite(a):
+                self.prime_cache[n] = False
+                return False
+        
+        self.prime_cache[n] = True
+        return True
+    
+    def _get_miller_rabin_bases(self, n: int) -> List[int]:
+        """Seleciona bases otimizadas para Miller-Rabin"""
+        if n < 2047:
+            return [2]
+        elif n < 1373653:
+            return [2, 3]
+        elif n < 9080191:
+            return [31, 73]
+        elif n < 25326001:
+            return [2, 3, 5]
+        elif n < 3215031751:
+            return [2, 3, 5, 7]
+        elif n < 4759123141:
+            return [2, 7, 61]
+        else:
+            # Para números muito grandes, usar bases aleatórias
+            return random.sample(range(2, min(n-2, 1000)), 7)
+    
+    def factorize(self, n: int) -> List[int]:
+        """Fatoração otimizada com múltiplas estratégias"""
+        if n in self.factorization_cache:
+            return self.factorization_cache[n]
+            
+        if n < 2:
+            return []
+        
+        original_n = n
+        factors = []
+        
+        # Remover fatores 2
+        while n % 2 == 0:
+            factors.append(2)
+            n //= 2
+        
+        # Usar Pollard's Rho para números grandes
+        if n > 10**12:
+            factor = self.pollards_rho_optimized(n)
+            if factor and factor != n:
+                factors.extend(self.factorize(factor))
+                factors.extend(self.factorize(n // factor))
+                self.factorization_cache[original_n] = sorted(factors)
+                return sorted(factors)
+        
+        # Fatoração tradicional com passo otimizado
+        f = 3
+        while f * f <= n:
+            if n % f == 0:
+                factors.append(f)
+                n //= f
+            else:
+                f += 2  # Incremento pode ser otimizado mais
+        
+        if n > 1:
+            factors.append(n)
+        
+        self.factorization_cache[original_n] = sorted(factors)
+        return sorted(factors)
+    
+    def factorize_advanced(self, n: int) -> Dict[int, int]:
+        """Fatoração retornando dicionário com expoentes"""
+        factors_list = self.factorize(n)
+        factors_dict = {}
+        for factor in factors_list:
+            factors_dict[factor] = factors_dict.get(factor, 0) + 1
+        return factors_dict
+    
+    def pollards_rho_optimized(self, n: int) -> Optional[int]:
+        """Algoritmo rho de Pollard otimizado"""
+        if n % 2 == 0:
+            return 2
+        if n % 3 == 0:
+            return 3
+        if self.miller_rabin_test(n):
+            return None
+        
+        def g(x: int, c: int) -> int:
+            return (x * x + c) % n
+        
+        # Tentar diferentes constantes
+        for c in [1, 2, 3, 4, 5, 6]:
+            x, y, d = 2, 2, 1
+            while d == 1:
+                x = g(x, c)
+                y = g(g(y, c), c)
+                d = math.gcd(abs(x - y), n)
+            
+            if d != n and d != 1:
+                return d
+        
+        return None
+    
+    def find_twin_primes(self, limit: int) -> List[Tuple[int, int]]:
+        """Encontra pares de primos gêmeos otimizado"""
+        primes = self.sieve_of_eratosthenes(limit)
+        twins = []
+        
+        for i in range(len(primes) - 1):
+            if primes[i+1] - primes[i] == 2:
+                twins.append((primes[i], primes[i+1]))
+        
+        return twins
+    
+    def find_prime_clusters(self, limit: int, cluster_size: int = 3) -> List[List[int]]:
+        """Encontra clusters de primos (triplos, quadruplos, etc)"""
+        primes = self.sieve_of_eratosthenes(limit)
+        clusters = []
+        
+        for i in range(len(primes) - cluster_size + 1):
+            cluster = primes[i:i + cluster_size]
+            # Verificar se as diferenças são consistentes
+            differences = [cluster[j+1] - cluster[j] for j in range(cluster_size - 1)]
+            if all(diff == differences[0] for diff in differences):
+                clusters.append(cluster)
+        
+        return clusters
+    
+    def goldbach_conjecture(self, n: int) -> Optional[Tuple[int, int]]:
+        """Verifica a conjectura de Goldbach otimizada"""
+        if n < 4 or n % 2 != 0:
+            return None
+        
+        primes = self.sieve_of_eratosthenes(n)
+        prime_set = set(primes)
+        
+        # Busca binária para melhor performance
+        for p in primes:
+            if p > n // 2:
+                break
+            if (n - p) in prime_set:
+                return (p, n - p)
+        return None
+    
+    def goldbach_partitions(self, n: int) -> List[Tuple[int, int]]:
+        """Encontra todas as partições de Goldbach"""
+        if n < 4 or n % 2 != 0:
+            return []
+        
+        primes = self.sieve_of_eratosthenes(n)
+        prime_set = set(primes)
+        partitions = []
+        
+        for p in primes:
+            if p > n // 2:
+                break
+            if (n - p) in prime_set:
+                partitions.append((p, n - p))
+        
+        return partitions
+    
+    def generate_ulam_spiral(self, size: int) -> np.ndarray:
+        """Gera uma espiral de Ulam corrigida"""
+        spiral = np.zeros((size, size), dtype=int)
+        x, y = size // 2, size // 2
+        
+        if size % 2 == 0:  # Ajuste para tamanhos pares
+            x -= 1
+            y -= 1
+        
+        directions = [(1, 0), (0, -1), (-1, 0), (0, 1)]  # Direções corrigidas
+        dir_idx = 0
+        steps = 1
+        current_num = 1
+        
+        spiral[y, x] = current_num
+        current_num += 1
+        
+        while current_num <= size * size:
+            for _ in range(2):  # Dois lados por camada
+                for _ in range(steps):
+                    dx, dy = directions[dir_idx]
+                    x += dx
+                    y += dy
+                    
+                    if 0 <= x < size and 0 <= y < size:
+                        spiral[y, x] = current_num
+                        current_num += 1
+                        if current_num > size * size:
+                            return spiral
+                
+                dir_idx = (dir_idx + 1) % 4
+            steps += 1
+        
+        return spiral
+    
+    def display_ulam_spiral(self, size: int = 50):
+        """Exibe a espiral de Ulam graficamente com melhorias"""
+        spiral = self.generate_ulam_spiral(size)
+        primes = set(self.sieve_of_eratosthenes(size * size))
+        
+        plt.figure(figsize=(12, 12))
+        
+        # Plotar pontos primos
+        prime_coords = []
+        for y in range(size):
+            for x in range(size):
+                if spiral[y, x] in primes and spiral[y, x] > 1:
+                    prime_coords.append((x, y))
+        
+        if prime_coords:
+            x_coords, y_coords = zip(*prime_coords)
+            plt.scatter(x_coords, y_coords, color='red', s=1, alpha=0.7)
+        
+        plt.gca().invert_yaxis()
+        plt.title(f'Espiral de Ulam (Tamanho {size}×{size}) - {len(prime_coords)} Primos')
+        plt.axis('equal')
+        plt.axis('off')
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_prime_distribution(self, limit: int):
+        """Visualizar distribuição de primos"""
+        primes = self.sieve_of_eratosthenes(limit)
+        
+        plt.figure(figsize=(15, 5))
+        
+        # Gráfico 1: Distribuição acumulada
+        plt.subplot(1, 3, 1)
+        plt.plot(primes, range(1, len(primes) + 1), 'b-', linewidth=1)
+        plt.xlabel('Número')
+        plt.ylabel('Quantidade de Primos ≤ n')
+        plt.title('Função de Distribuição de Primos')
+        plt.grid(True, alpha=0.3)
+        
+        # Gráfico 2: Densidade de primos
+        plt.subplot(1, 3, 2)
+        intervals = list(range(0, limit + 1, limit // 20))
+        prime_counts = [len([p for p in primes if p <= upper]) for upper in intervals[1:]]
+        plt.plot(intervals[1:], prime_counts, 'g-', linewidth=2)
+        plt.xlabel('Limite Superior')
+        plt.ylabel('Quantidade de Primos')
+        plt.title('Densidade de Primos')
+        plt.grid(True, alpha=0.3)
+        
+        # Gráfico 3: Gaps entre primos
+        plt.subplot(1, 3, 3)
+        gaps = [primes[i+1] - primes[i] for i in range(len(primes)-1)]
+        plt.hist(gaps, bins=50, alpha=0.7, color='purple')
+        plt.xlabel('Gap entre Primos Consecutivos')
+        plt.ylabel('Frequência')
+        plt.title('Distribuição de Gaps entre Primos')
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def benchmark_methods(self, limit: int) -> Dict:
+        """Benchmark completo com estatísticas"""
+        print(f"\n BENCHMARK PARA LIMITE {limit:,}")
+        print("=" * 60)
+        
+        results = {}
+        methods = [
+            ('Eratóstenes', self.sieve_of_eratosthenes),
+            ('Atkin', self.sieve_of_atkin),
+            ('Sundaram', self.sieve_of_sundaram)
+        ]
+        
+        for name, method in methods:
+            try:
+                # Warm-up
+                _ = method(min(limit, 1000))
+                
+                # Medição principal
+                start_time = time.perf_counter()
+                primes = method(limit)
+                end_time = time.perf_counter()
+                
+                execution_time = end_time - start_time
+                results[name] = {
+                    'primes_count': len(primes),
+                    'time': execution_time,
+                    'largest_prime': primes[-1] if primes else None
+                }
+                
+                # Armazenar estatísticas
+                self.performance_stats[name].append((limit, execution_time))
+                
+                print(f" {name:12} | {len(primes):>8,} primos | {execution_time:>8.4f}s | Maior: {primes[-1] if primes else 'N/A'}")
+                
+            except Exception as e:
+                print(f" {name:12} | ERRO: {e}")
+                results[name] = {'error': str(e)}
+        
+        # Análise comparativa
+        if len(results) >= 2:
+            fastest = min((r for r in results.values() if 'time' in r), key=lambda x: x['time'])
+            print(f"\n Método mais rápido: {[k for k, v in results.items() if v.get('time') == fastest['time']][0]}")
+        
+        return results
+    
+    def plot_performance_comparison(self):
+        """Plotar comparação de performance ao longo do tempo"""
+        if not self.performance_stats:
+            print("Nenhum dado de performance coletado ainda.")
+            return
+        
+        plt.figure(figsize=(12, 6))
+        
+        for method, data in self.performance_stats.items():
+            if data:
+                limits, times = zip(*data)
+                plt.plot(limits, times, 'o-', label=method, linewidth=2, markersize=6)
+        
+        plt.xlabel('Limite')
+        plt.ylabel('Tempo de Execução (segundos)')
+        plt.title('Comparação de Performance dos Métodos')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.yscale('log')
+        plt.xscale('log')
+        plt.tight_layout()
+        plt.show()
+    
+    def save_results_to_file(self, data, filename: str):
+        """Salvar resultados em arquivo"""
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(f"Resultados gerados em {datetime.now()}\n")
+                f.write("=" * 50 + "\n")
+                
+                if isinstance(data, list):
+                    f.write(f"Total de itens: {len(data)}\n")
+                    f.write("\n".join(map(str, data)))
+                elif isinstance(data, dict):
+                    for key, value in data.items():
+                        f.write(f"{key}: {value}\n")
+                else:
+                    f.write(str(data))
+            
+            print(f" Resultados salvos em: {filename}")
+        except Exception as e:
+            print(f" Erro ao salvar arquivo: {e}")
+    
+    def prime_number_theorem_approximation(self, n: int) -> float:
+        """Aproximação do número de primos até n usando o Teorema do Número Primo"""
+        return n / math.log(n) if n > 1 else 0
+    
+    def compare_with_pnt(self, limit: int):
+        """Comparar contagem real com Teorema do Número Primo"""
+        actual_primes = len(self.sieve_of_eratosthenes(limit))
+        pnt_estimate = self.prime_number_theorem_approximation(limit)
+        
+        print(f"\n COMPARAÇÃO COM TEOREMA DO NÚMERO PRIMO (limite: {limit:,})")
+        print(f"Primos reais: {actual_primes:,}")
+        print(f"Estimativa PNT: {pnt_estimate:,.1f}")
+        print(f"Diferença: {abs(actual_primes - pnt_estimate):.1f}")
+        print(f"Erro relativo: {abs(actual_primes - pnt_estimate) / actual_primes * 100:.2f}%")
+    
+    def interactive_menu(self):
+        """Menu interativo melhorado"""
+        while True:
+            print("\n" + "="*70)
+            print(" SUITE AVANÇADA DE NÚMEROS PRIMOS - MENU PRINCIPAL")
+            print("="*70)
+            print("1.  Verificar primalidade de um número")
+            print("2.  Listar primos até um limite")
+            print("3.  Fatorar um número")
+            print("4.  Encontrar primos gêmeos")
+            print("5.  Encontrar clusters de primos")
+            print("6.  Verificar conjectura de Goldbach")
+            print("7.  Visualizar Espiral de Ulam")
+            print("8.  Plotar distribuição de primos")
+            print("9.  Benchmark de métodos")
+            print("10. Comparar com Teorema do Número Primo")
+            print("11. Visualizar performance dos métodos")
+            print("12. Estatísticas e informações")
+            print("13. Sair")
+            print("-"*70)
+            
+            choice = input("Escolha uma opção (1-13): ").strip()
+            
+            if choice == '1':
+                self._menu_primality_test()
+            elif choice == '2':
+                self._menu_list_primes()
+            elif choice == '3':
+                self._menu_factorize()
+            elif choice == '4':
+                self._menu_twin_primes()
+            elif choice == '5':
+                self._menu_prime_clusters()
+            elif choice == '6':
+                self._menu_goldbach()
+            elif choice == '7':
+                self._menu_ulam_spiral()
+            elif choice == '8':
+                self._menu_prime_distribution()
+            elif choice == '9':
+                self._menu_benchmark()
+            elif choice == '10':
+                self._menu_pnt_comparison()
+            elif choice == '11':
+                self.plot_performance_comparison()
+            elif choice == '12':
+                self._show_statistics()
+            elif choice == '13':
+                print("\n Obrigado por usar a Suite Avançada de Números Primos!")
+                break
+            else:
+                print(" Opção inválida. Por favor, escolha 1-13.")
+    
+    def _menu_primality_test(self):
+        try:
+            n = int(input("Digite o número para verificar: "))
+            if n < 0:
+                print("Por favor, digite um número não-negativo.")
+                return
+            
+            print(f"\n ANALISANDO PRIMALIDADE DE {n:,}")
+            print("-" * 40)
+            
+            start = time.time()
+            naive_result = self.is_prime_naive(n)
+            naive_time = time.time() - start
+            
+            print(f"Método ingênuo: {naive_result} ({naive_time:.6f}s)")
+            
+            if n > 1000:
+                start = time.time()
+                mr_result = self.miller_rabin_test(n)
+                mr_time = time.time() - start
+                print(f"Miller-Rabin:   {mr_result} ({mr_time:.6f}s)")
+            
+            # Verificação com sympy para comparação
+            try:
+                start = time.time()
+                sympy_result = sympy.isprime(n)
+                sympy_time = time.time() - start
+                print(f"SymPy:          {sympy_result} ({sympy_time:.6f}s)")
+            except:
+                pass
+            
+        except ValueError:
+            print(" Por favor, digite um número válido.")
+    
+    def _menu_list_primes(self):
+        try:
+            limit = int(input("Digite o limite máximo: "))
+            if limit < 2:
+                print("O limite deve ser pelo menos 2.")
+                return
+            
+            method = input("Método (1-Eratóstenes, 2-Atkin, 3-Sundaram): ").strip()
+            
+            start_time = time.time()
+            if method == '2':
+                primes = self.sieve_of_atkin(limit)
+                method_name = "Atkin"
+            elif method == '3':
+                primes = self.sieve_of_sundaram(limit)
+                method_name = "Sundaram"
+            else:
+                primes = self.sieve_of_eratosthenes(limit)
+                method_name = "Eratóstenes"
+            
+            end_time = time.time()
+            
+            print(f"\n Primos encontrados com {method_name} ({len(primes):,} números):")
+            print(f"  Tempo de execução: {end_time - start_time:.4f} segundos")
+            print(f" Maior primo: {primes[-1] if primes else 'N/A'}")
+            
+            if len(primes) <= 50:
+                print("\n".join(map(str, primes)))
+            else:
+                print(f" Primeiros 10: {primes[:10]}")
+                print(f" Últimos 10: {primes[-10:]}")
+                
+                # Salvar em arquivo se for muitos números
+                if input("\n Salvar lista completa em arquivo? (s/n): ").lower() == 's':
+                    filename = f"primos_ate_{limit}.txt"
+                    self.save_results_to_file(primes, filename)
+                    
+        except ValueError:
+            print(" Por favor, digite um número válido.")
+    
+    def _menu_factorize(self):
+        try:
+            n = int(input("Digite o número para fatorar: "))
+            if n < 2:
+                print("Número deve ser maior que 1.")
+                return
+            
+            print(f"\n FATORAÇÃO DE {n:,}")
+            print("-" * 40)
+            
+            start = time.time()
+            factors = self.factorize(n)
+            factor_time = time.time() - start
+            
+            factors_dict = self.factorize_advanced(n)
+            
+            print(f"Fatores: {factors}")
+            print(f"Fatoração: {n} = {' × '.join(map(str, factors))}")
+            print(f"Forma exponencial: {n} = {' × '.join(f'{base}^{exp}' for base, exp in factors_dict.items())}")
+            print(f"Tempo: {factor_time:.6f}s")
+            
+            if len(factors) == 1:
+                print(f" {n} é um número primo!")
+            else:
+                print(f" Total de fatores primos: {len(factors)}")
+                print(f" Fatores únicos: {len(factors_dict)}")
+                
+        except ValueError:
+            print(" Por favor, digite um número válido.")
+    
+    def _menu_twin_primes(self):
+        try:
+            limit = int(input("Digite o limite para buscar primos gêmeos: "))
+            if limit < 3:
+                print("Limite deve ser pelo menos 3.")
+                return
+            
+            start = time.time()
+            twins = self.find_twin_primes(limit)
+            end_time = time.time()
+            
+            print(f"\n PRIMOS GÊMEOS ATÉ {limit:,}")
+            print("-" * 50)
+            print(f"Encontrados {len(twins)} pares em {end_time - start_time:.4f}s")
+            
+            if twins:
+                if len(twins) <= 15:
+                    for i, (p1, p2) in enumerate(twins, 1):
+                        print(f"{i:2d}. ({p1:,}, {p2:,})")
+                else:
+                    print("Primeiros 5 pares:")
+                    for i in range(min(5, len(twins))):
+                        print(f"{i+1:2d}. {twins[i]}")
+                    print("Últimos 5 pares:")
+                    for i in range(-min(5, len(twins)), 0):
+                        print(f"{len(twins)+i+1:2d}. {twins[i]}")
+                
+                # Estatísticas
+                gaps = [p2 - p1 for p1, p2 in twins]
+                print(f"\n Maior par: {twins[-1]}")
+                print(f" Menor par: {twins[0]}")
+                
+        except ValueError:
+            print(" Por favor, digite um número válido.")
+    
+    def _menu_prime_clusters(self):
+        try:
+            limit = int(input("Digite o limite: "))
+            cluster_size = int(input("Tamanho do cluster (3 para triplos, 4 para quadruplos, etc): "))
+            
+            if cluster_size < 2:
+                print("Tamanho do cluster deve ser pelo menos 2.")
+                return
+            
+            clusters = self.find_prime_clusters(limit, cluster_size)
+            
+            print(f"\n CLUSTERS DE {cluster_size} PRIMOS ATÉ {limit:,}")
+            print(f"Encontrados {len(clusters)} clusters")
+            
+            if clusters:
+                for i, cluster in enumerate(clusters[:10], 1):
+                    print(f"{i:2d}. {cluster} (diferença: {cluster[1] - cluster[0]})")
+                
+                if len(clusters) > 10:
+                    print(f"... e mais {len(clusters) - 10} clusters")
+                    
+        except ValueError:
+            print(" Por favor, digite números válidos.")
+    
+    def _menu_goldbach(self):
+        try:
+            n = int(input("Digite um número par para verificar Goldbach: "))
+            if n < 4 or n % 2 != 0:
+                print("Número deve ser par e maior ou igual a 4.")
+                return
+            
+            print(f"\n CONJECTURA DE GOLDBACH PARA {n:,}")
+            print("-" * 50)
+            
+            # Uma partição
+            start = time.time()
+            result = self.goldbach_conjecture(n)
+            single_time = time.time() - start
+            
+            if result:
+                print(f"Partição encontrada: {n} = {result[0]:,} + {result[1]:,}")
+                print(f"Tempo: {single_time:.6f}s")
+            
+            # Todas as partições
+            if n <= 100000 and input("\n Encontrar todas as partições? (s/n): ").lower() == 's':
+                start = time.time()
+                partitions = self.goldbach_partitions(n)
+                all_time = time.time() - start
+                
+                print(f"\nTodas as {len(partitions)} partições de Goldbach:")
+                if len(partitions) <= 20:
+                    for i, (p1, p2) in enumerate(partitions, 1):
+                        print(f"{i:2d}. {n} = {p1} + {p2}")
+                else:
+                    print(f"Primeiras 10:")
+                    for i in range(10):
+                        print(f"{i+1:2d}. {n} = {partitions[i][0]} + {partitions[i][1]}")
+                    print(f"Últimas 10:")
+                    for i in range(-10, 0):
+                        print(f"{len(partitions)+i+1:2d}. {n} = {partitions[i][0]} + {partitions[i][1]}")
+                
+                print(f"  Tempo total: {all_time:.4f}s")
+                
+        except ValueError:
+            print(" Por favor, digite um número válido.")
+    
+    def _menu_ulam_spiral(self):
+        try:
+            size = int(input("Tamanho da espiral (recomendado: 50-100): "))
+            if size < 10:
+                print("Tamanho mínimo é 10.")
+                return
+            
+            print(" Gerando espiral de Ulam...")
+            self.display_ulam_spiral(size)
+            
+        except ValueError:
+            print(" Por favor, digite um número válido.")
+    
+    def _menu_prime_distribution(self):
+        try:
+            limit = int(input("Digite o limite para análise de distribuição: "))
+            if limit < 100:
+                print("Use pelo menos 100 para análise significativa.")
+                return
+            
+            print(" Gerando gráficos de distribuição...")
+            self.plot_prime_distribution(limit)
+            
+        except ValueError:
+            print(" Por favor, digite um número válido.")
+    
+    def _menu_benchmark(self):
+        try:
+            limit = int(input("Digite o limite para benchmark: "))
+            if limit < 100:
+                print("Use pelo menos 100 para benchmark significativo.")
+                return
+            
+            self.benchmark_methods(limit)
+            
+        except ValueError:
+            print(" Por favor, digite um número válido.")
+    
+    def _menu_pnt_comparison(self):
+        try:
+            limit = int(input("Digite o limite para comparação com PNT: "))
+            if limit < 10:
+                print("Use pelo menos 10.")
+                return
+            
+            self.compare_with_pnt(limit)
+            
+        except ValueError:
+            print(" Por favor, digite um número válido.")
+    
+    def _show_statistics(self):
+        """Mostrar estatísticas do sistema"""
+        print(f"\n ESTATÍSTICAS DO SISTEMA")
+        print("-" * 40)
+        print(f"Cache de primalidade: {len(self.prime_cache)} itens")
+        print(f"Cache de fatoração: {len(self.factorization_cache)} itens")
+        print(f"Cache de listas: {len(self.prime_list_cache)} itens")
+        
+        if self.performance_stats:
+            print(f"\n DADOS DE PERFORMANCE:")
+            for method, data in self.performance_stats.items():
+                if data:
+                    limits, times = zip(*data)
+                    print(f"  {method}: {len(data)} execuções, maior limite: {max(limits):,}")
+        
+        # Informações do sistema
+        print(f"\n INFORMAÇÕES DO SISTEMA:")
+        print(f"Python: {sys.version.split()[0]}")
+        print(f"Plataforma: {sys.platform}")
+
+def main():
+    """Função principal melhorada"""
+    print(" Bem-vindo à Suite Avançada de Análise de Números Primos!")
+    print
